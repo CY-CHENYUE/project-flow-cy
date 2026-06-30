@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "root=\"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\"; if [ ! -f \"$root/.hooks/stop-doccheck.sh\" ]; then d=\"$PWD\"; while [ \"$d\" != \"/\" ] && [ ! -f \"$d/.hooks/stop-doccheck.sh\" ]; do d=\"$(dirname \"$d\")\"; done; root=\"$d\"; fi; if [ ! -f \"$root/.hooks/stop-doccheck.sh\" ]; then printf '%s\\n' '{\"continue\":true,\"systemMessage\":\"project-flow stop hook script not found\"}'; exit 0; fi; bash \"$root/.hooks/stop-doccheck.sh\" codex",
+            "timeout": 30,
+            "statusMessage": "收工自检"
+          }
+        ]
+      }
+    ]
+  }
+}
