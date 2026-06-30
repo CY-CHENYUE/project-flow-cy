@@ -142,6 +142,13 @@ skill 会在 `flow/进展.md` 顶部追加一条记录，字段包括：
 - 不擅自覆盖已有 `AGENTS.md`、`CLAUDE.md`、hook 配置或用户文档。
 - 不擅自修改全局 Codex / Claude 配置。
 
+## 关注公众号
+
+<div align="center">
+  <p>扫码关注公众号，获取更新与交流反馈</p>
+  <img src="assets/wechat-qr.jpg" alt="WeChat Official Account QR Code" width="200">
+</div>
+
 ## 许可
 
 GPL-3.0-or-later。
