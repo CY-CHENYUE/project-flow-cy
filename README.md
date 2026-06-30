@@ -114,6 +114,7 @@ skill 会在 `flow/进展.md` 顶部追加一条记录，字段包括：
 | 路径 | 作用 |
 |---|---|
 | `SKILL.md` | skill 入口，定义触发和两类操作 |
+| `LICENSE` / `NOTICE` | 开源许可证和版权归属说明 |
 | `references/初始化SOP.md` | 项目接入流程和自检清单 |
 | `references/工作流程.md` | 五段式主循环、接力机制、目录归属 |
 | `references/文档维护SOP.md` | `AGENTS.md` 怎么维护 |
@@ -143,4 +144,6 @@ skill 会在 `flow/进展.md` 顶部追加一条记录，字段包括：
 
 ## 许可
 
-MIT
+GPL-3.0-or-later。
+
+使用、复制、修改或分发本项目时，请保留 CY-CHENYUE 的版权和许可证声明；如果分发修改版或派生版本，也需要按同一许可证开源。
