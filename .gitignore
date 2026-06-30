@@ -1,0 +1,27 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs / temp files
+*.log
+*.tmp
+*.bak
+
+# Runtime output if someone runs the skill inside the skill repo by mistake
+flow/
+docs/
+scripts/
+src/
+AGENTS.md
+CLAUDE.md
+DESIGN.md
+.hooks/
+.claude/
+.codex/
