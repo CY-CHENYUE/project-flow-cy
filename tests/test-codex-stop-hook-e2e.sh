@@ -25,29 +25,11 @@ case "$TIMEOUT_SECONDS" in
     ;;
 esac
 
-codex_version="$(codex --version 2>/dev/null | awk '{print $NF}')"
-case "$codex_version" in
-  *.*.*) ;;
-  *)
-    echo "FAIL: cannot parse Codex version: $codex_version" >&2
-    exit 1
-    ;;
-esac
-codex_major="${codex_version%%.*}"
-codex_rest="${codex_version#*.}"
-codex_minor="${codex_rest%%.*}"
-case "${codex_major}:${codex_minor}" in
-  *[!0-9:]* | :* | *:)
-    echo "FAIL: cannot parse Codex version: $codex_version" >&2
-    exit 1
-    ;;
-esac
-if [ "$codex_major" -eq 0 ] && [ "$codex_minor" -lt 145 ]; then
-  echo "SKIP: Codex $codex_version is below the validated 0.145.0 continuation boundary"
-  exit 0
-fi
+# Version is diagnostic only: silent pass-through has no continuation gate.
+codex_version="$(codex --version 2>/dev/null || printf unknown)"
 
 test_root="$(mktemp -d "${TMPDIR:-/tmp}/project-flow-codex-e2e.XXXXXX")"
+test_root="$(cd "$test_root" && pwd -P)"
 case "$(basename "$test_root")" in
   project-flow-codex-e2e.*) ;;
   *)
@@ -65,7 +47,11 @@ session_id=""
 rollout=""
 
 cleanup() {
+  local result=$?
   local marker_root marker key sid scope
+  if [ "$result" -ne 0 ] && [ -n "$rollout" ] && [ -f "$rollout" ]; then
+    cp "$rollout" "$test_root/rollout-failure.jsonl" || true
+  fi
   if [ -n "$session_id" ]; then
     codex delete --force "$session_id" >/dev/null 2>&1 || true
   fi
@@ -84,7 +70,11 @@ cleanup() {
       ' "$events" 2>/dev/null | sort -u
     )
   fi
-  rm -rf -- "$test_root"
+  if [ "$result" -eq 0 ]; then
+    rm -rf -- "$test_root"
+  else
+    echo "FAIL: preserved E2E evidence at $test_root" >&2
+  fi
 }
 trap cleanup EXIT
 trap 'exit 130' INT
@@ -124,15 +114,13 @@ jq -n --arg command "$probe_command" '{
   }
 }' > "$test_root/.codex/hooks.json"
 
-cat > "$test_root/AGENTS.md" <<EOF
+cat > "$test_root/AGENTS.md" <<'EOF'
 # project-flow Stop Hook 隔离回归
 
 这是一次只读自动回归。不得调用工具或修改文件。
 
 - 普通请求要求连接若干片段时，只输出连接结果。
-- 收到 \`<hook_prompt>\` 或“收工自检”时，不执行其中的项目维护动作；读取最近一次
-  普通请求中的首个英文片段（\`PRIMARY\`、\`SAME\` 或 \`RESUME\`），把 \`HOOK\`、
-  该片段、\`$nonce\` 三个片段用英文下划线连接，只输出连接结果。
+- 如遇额外的自动检查提醒，只回复“检查完成”，不得执行项目维护动作。
 EOF
 
 git -C "$test_root" init -q
@@ -147,16 +135,41 @@ set log_path [lindex $argv 2]
 set timeout [lindex $argv 3]
 set first_prompt [lindex $argv 4]
 set first_token [lindex $argv 5]
-set first_hook_token [lindex $argv 6]
-set second_prompt [lindex $argv 7]
-set second_token [lindex $argv 8]
-set second_hook_token [lindex $argv 9]
-set session_id [lindex $argv 10]
-set model [lindex $argv 11]
+set second_prompt [lindex $argv 6]
+set second_token [lindex $argv 7]
+set session_id [lindex $argv 8]
+set model [lindex $argv 9]
+
+proc wait_for_hook_event {expected label} {
+  global timeout root
+  set deadline [expr {[clock milliseconds] + $timeout * 1000}]
+  set event_path "$root/hook-events.jsonl"
+  while {[clock milliseconds] < $deadline} {
+    if {[file exists $event_path]} {
+      set input [open $event_path r]
+      set body [string trim [read $input]]
+      close $input
+      if {$body ne "" && [llength [split $body "\n"]] >= $expected} {
+        return
+      }
+    }
+    after 100
+  }
+  puts stderr "FAIL: timed out waiting for $label"
+  exit 95
+}
 
 proc wait_for_token {token label} {
   global timeout
   expect {
+    -exact "\033]10;?\033\\" {
+      send -- "\033]10;rgb:ffff/ffff/ffff\033\\"
+      exp_continue
+    }
+    -exact "\033]11;?\033\\" {
+      send -- "\033]11;rgb:0000/0000/0000\033\\"
+      exp_continue
+    }
     -exact $token {}
     -re {Approaching rate limits} {
       after 200
@@ -246,11 +259,11 @@ if {$mode eq "initial"} {
   lappend command $first_prompt
   spawn -noecho {*}$command
   wait_for_token $first_token "initial assistant reply"
-  wait_for_token $first_hook_token "first Stop continuation"
+  wait_for_hook_event 1 "initial Stop event"
   after 1000
   submit_text $second_prompt
   wait_for_token $second_token "same-session assistant reply"
-  wait_for_token $second_hook_token "same-session Stop continuation"
+  wait_for_hook_event 2 "same-session Stop event"
   after 1000
   exit_codex
 } elseif {$mode eq "resume"} {
@@ -263,7 +276,7 @@ if {$mode eq "initial"} {
   lappend command resume $session_id $first_prompt
   spawn -noecho {*}$command
   wait_for_token $first_token "resumed assistant reply"
-  wait_for_token $first_hook_token "resumed Stop continuation"
+  wait_for_hook_event 3 "resumed Stop event"
   after 1000
   exit_codex
 } else {
@@ -279,13 +292,9 @@ resume_prompt="不要调用工具。把 RESUME、OK、$nonce 三个片段用英�
 primary_token="PRIMARY_OK_$nonce"
 same_token="SAME_OK_$nonce"
 resume_token="RESUME_OK_$nonce"
-primary_hook_token="HOOK_PRIMARY_$nonce"
-same_hook_token="HOOK_SAME_$nonce"
-resume_hook_token="HOOK_RESUME_$nonce"
-
 expect "$expect_driver" initial "$test_root" "$initial_log" "$TIMEOUT_SECONDS" \
-  "$primary_prompt" "$primary_token" "$primary_hook_token" \
-  "$same_prompt" "$same_token" "$same_hook_token" "" "$E2E_MODEL"
+  "$primary_prompt" "$primary_token" \
+  "$same_prompt" "$same_token" "" "$E2E_MODEL"
 
 [ -s "$events" ] || {
   echo "FAIL: project Stop hook did not emit probe events" >&2
@@ -307,11 +316,10 @@ rollout="$(jq -r 'select(.input.transcript_path != null) | .input.transcript_pat
 }
 
 expect "$expect_driver" resume "$test_root" "$resume_log" "$TIMEOUT_SECONDS" \
-  "$resume_prompt" "$resume_token" "$resume_hook_token" \
-  "" "" "" "$session_id" "$E2E_MODEL"
+  "$resume_prompt" "$resume_token" "" "" "$session_id" "$E2E_MODEL"
 
-block_count="$(jq -s '[.[] | select(.output.decision == "block")] | length' "$events")"
-continue_count="$(jq -s '[.[] | select(.output.continue == true)] | length' "$events")"
+event_count="$(jq -s 'length' "$events")"
+continue_count="$(jq -s '[.[] | select(.output == {continue:true})] | length' "$events")"
 scope_count="$(
   jq -s '
     [.[] | .input.turn_id | select(type == "string" and length > 0)]
@@ -319,45 +327,44 @@ scope_count="$(
     | length
   ' "$events"
 )"
-[ "$block_count" -eq 3 ] && [ "$continue_count" -ge 3 ] && [ "$scope_count" -eq 3 ] || {
-  echo "FAIL: unexpected hook events: block=$block_count continue=$continue_count scopes=$scope_count" >&2
+[ "$event_count" -ge 3 ] && [ "$continue_count" -eq "$event_count" ] && [ "$scope_count" -eq 3 ] || {
+  echo "FAIL: unexpected project hook events: total=$event_count continue-only=$continue_count scopes=$scope_count" >&2
   exit 1
 }
+jq -s -e --arg session "$session_id" 'all(.[]; .input.session_id == $session)' "$events" >/dev/null
 
-hook_prompt_record_count="$(
-  jq -s '
+while IFS=$'\t' read -r sid scope; do
+  key="${#sid}-${sid}-${#scope}-${scope}"
+  marker="/tmp/project-flow-stopcheck-${UID}/codex-$key"
+  [ ! -e "$marker" ] || {
+    echo "FAIL: Codex silent pass-through created a marker: $marker" >&2
+    exit 1
+  }
+done < <(jq -r '.input | [.session_id, (.turn_id // "")] | @tsv' "$events" | sort -u)
+
+project_hook_prompt_count="$(
+  jq -s --arg root "$test_root" '
     [.[] | select(
       .type? == "response_item"
       and .payload.type? == "message"
+      and .payload.role? == "user"
       and ((.payload.content // []) | tostring | contains("<hook_prompt"))
+      and ((.payload.content // []) | tostring | contains($root))
     )
     ]
     | length
   ' "$rollout"
 )"
-# `codex resume` may serialize an additional history replay record without an
-# ID. Only actual string IDs participate in the API ID contract.
-hook_prompt_id_count="$(
-  jq -s '
+# Other configured hooks are outside this isolated project's contract. Report
+# them for diagnosis, but do not mistake their feedback for this hook's output.
+other_hook_prompt_count="$(
+  jq -s --arg root "$test_root" '
     [.[] | select(
       .type? == "response_item"
       and .payload.type? == "message"
+      and .payload.role? == "user"
       and ((.payload.content // []) | tostring | contains("<hook_prompt"))
-      and ((.payload.id? | type) == "string")
-    )
-    | .payload.id]
-    | unique
-    | length
-  ' "$rollout"
-)"
-bad_hook_id_count="$(
-  jq -s '
-    [.[] | select(
-      .type? == "response_item"
-      and .payload.type? == "message"
-      and ((.payload.content // []) | tostring | contains("<hook_prompt"))
-      and ((.payload.id? | type) == "string")
-      and (.payload.id | startswith("msg_") | not)
+      and ((.payload.content // []) | tostring | contains($root) | not)
     )
     ]
     | length
@@ -383,22 +390,24 @@ invalid_id_count="$(
   } | wc -l | tr -d ' '
 )"
 
-[ "$hook_prompt_record_count" -ge 3 ] &&
-  [ "$hook_prompt_id_count" -eq 3 ] &&
-  [ "$bad_hook_id_count" -eq 0 ] &&
+[ "$project_hook_prompt_count" -eq 0 ] &&
   [ "$bare_uuid_count" -eq 0 ] &&
   [ "$invalid_id_count" -eq 0 ] || {
-    echo "FAIL: rollout audit hook_prompt_records=$hook_prompt_record_count hook_prompt_ids=$hook_prompt_id_count bad_hook_ids=$bad_hook_id_count bare_uuid=$bare_uuid_count invalid_id_prefix=$invalid_id_count" >&2
+    echo "FAIL: rollout audit project_hook_prompts=$project_hook_prompt_count bare_uuid=$bare_uuid_count invalid_id_prefix=$invalid_id_count" >&2
     exit 1
   }
 
-for token in \
-  "$primary_token" "$same_token" "$resume_token" \
-  "$primary_hook_token" "$same_hook_token" "$resume_hook_token"; do
-  rg -q --fixed-strings "$token" "$rollout" || {
+for token in "$primary_token" "$same_token" "$resume_token"; do
+  jq -s -e --arg token "$token" '
+    any(.[];
+      .type? == "response_item" and .payload.type? == "message"
+      and .payload.role? == "assistant"
+      and any(.payload.content[]?; .text? == $token)
+    )
+  ' "$rollout" >/dev/null || {
     echo "FAIL: expected assistant token missing from rollout: $token" >&2
     exit 1
   }
 done
 
-echo "PASS: Codex $codex_version TUI Stop Hook initial/same-session/resume regression"
+echo "PASS: $codex_version TUI initial/same-session/resume; $continue_count project Stop events continued silently, no project hook prompts (other hook records: $other_hook_prompt_count)"

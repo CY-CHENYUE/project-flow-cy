@@ -22,6 +22,7 @@
 4. **铺根级骨架**:每个项目边界只建一套 `flow/`(`charter.md` `plan.md` `进展.md` `decisions.md` `踩坑记录.md` `tasks/`)+ `docs/`(放 `README.md`)。保留已有代码布局;只有全新单体代码项目且用户需要时才补 `scripts/` 或 `src/`,不替 monorepo 猜造业务目录。〔归属规则见 `工作流程.md`〕
 5. **根级入口注入**:
    - 写 `AGENTS.md`(从 `templates/AGENTS.md`:精要规则 + 约束 + 目录地图 + 指针;已有项目则**合并**进现有 AGENTS.md)。
+   - 带入开工时的需求理解与收尾回应约定,使日常任务也遵循;新任务或目标实质变化时简述目标和原始问题,明确需求后继续,不新增确认关卡。详见 `工作流程.md` 的「需求理解与结果回应」。
    - 建软链:`ln -s AGENTS.md CLAUDE.md`(Windows 改复制一份)。
    - (可选)写 `DESIGN.md`——仅当项目有设计 / 创意工作。
 6. **单仓多子项目的局部入口**:
@@ -29,9 +30,9 @@
    - 在同目录建立 `CLAUDE.md -> AGENTS.md`(Windows 改复制)。局部入口只写本模块职责、命令、约束和根级指针。
    - 不在子项目重复创建 `flow/`、`docs/`、`.hooks/`、`.claude/`、`.codex/`;不移动已有局部文档。根级 `docs/README.md` 对保留在模块内的文档加索引。
 7. **装根级 hook**:复制 `.hooks/stop-doccheck.sh` → `chmod +x` → 写根级 `.claude/settings.json` 与 `.codex/hooks.json`。
-   - 读取实际 `codex --version`:可解析且不低于 `0.145.0` 时启用单次自动续跑;更旧或未知版本由脚本安全放行。`0.144.1` 是已知不兼容版本,应先升级。
-   - Codex 当前 `features.hooks` 默认 true;检测有效状态,若被关才**提醒用户**开(或 `--enable hooks`),**不擅自改全局 `~/.codex/config.toml`**。
-   - 提醒:Codex 项目级 `.codex/` 层需项目 trust,且需 `/hooks` 审核批准。〔细节见 `hook机制.md`〕
+   - Codex Stop 直接返回 `continue:true`,不读取输入、不检查版本或回合 ID、不自动续跑;将最终回复前的业务专项检查、文档自检、交接和记录要求合并到根级 `AGENTS.md`。Claude Code 保留按 `prompt_id` 每回合最多一次的续跑兜底。
+   - **不擅自改全局 `~/.codex/config.toml`**,也不要求仅为本技能开启 Codex hooks;收工要求由 Agent 在最终回复前主动执行。
+   - 若需要加载 Codex 项目级 Hook,项目需 trust,首次添加或修改 command 时按客户端要求批准;保留既有 command 和其他 handler。〔细节见 `hook机制.md`〕
 8. **方法论详规随项目**:把 6 份详规复制进根级 `flow/规范/`(自包含)。〔或改为引用中心版——待定 #3〕
 
 ## 已有项目的非破坏合并细则
@@ -48,13 +49,14 @@
 - [ ] 已报告项目边界判断;单仓多子项目没有被误拆成多套总体流程,独立仓库也没有被误合并
 - [ ] 根级 `flow/`(charter/plan/进展/decisions/踩坑记录/tasks)与 `docs/` 已建;已有代码目录保持原样
 - [ ] `AGENTS.md` 存在;读 `CLAUDE.md` = `AGENTS.md`(软链解析正确)
-- [ ] AGENTS.md 里有:目录地图 + 开工/收工 + 核心约束 + 详规指针
+- [ ] AGENTS.md 里有:目录地图 + 开工/收工 + 核心约束 + 详规指针;明确最终回复前完成检查和记录,Codex 不等待 Stop 续跑
+- [ ] 根级入口包含需求理解约定及详规指针;收尾仍用六项字段,以“为什么”回应用户目标与原始问题,普通补充不重复重述
 - [ ] 每个有独立职责的子项目都有局部 `AGENTS.md` 与同源 `CLAUDE.md`;根级相对路径均可解析
 - [ ] 子项目没有新增重复的 `flow/`、`docs/` 或 hook;保留在模块内的文档已从根级 `docs/README.md` 索引
 - [ ] (若有设计工作)`DESIGN.md` 存在
-- [ ] 在 `project-flow-cy` Skill 源码目录运行 `bash tests/test-stop-hook.sh`;确认目标项目 `.hooks/stop-doccheck.sh` 可执行:Claude 只按 `prompt_id`、兼容的 Codex 只按 `turn_id` 界定回合,首次 Stop 输出 `decision:block`,同一 scope 的 active 或重复 Stop 输出 `continue:true`;错误字段、旧版、未知版本、非法输入和缺少专属稳定 ID 时安全放行
-- [ ] Codex 客户端升级或改动 continuation 机制后,按需显式运行 `PROJECT_FLOW_RUN_CODEX_TUI_E2E=1 bash tests/test-codex-stop-hook-e2e.sh`,验证首次续跑、同会话继续、退出恢复、`msg_` ID 与 `invalid_id_prefix`
+- [ ] 在 `project-flow-cy` Skill 源码目录运行 `bash tests/test-stop-hook.sh`;确认目标项目 `.hooks/stop-doccheck.sh` 可执行:Codex 直接输出 `continue:true`,不读取输入或调用版本、ID、内容检测;Claude 只按 `prompt_id` 界定回合,首次 Stop 输出 `decision:block`,同一 scope 的 active 或重复 Stop 输出 `continue:true`,缺稳定 ID、非法输入等异常安全放行
+- [ ] 需要验证 Codex 实际 Stop 与恢复行为时,显式运行 `PROJECT_FLOW_RUN_CODEX_TUI_E2E=1 bash tests/test-codex-stop-hook-e2e.sh`,确认首次回复、同会话继续、退出恢复均无本技能续跑提示;桌面折叠状态须另行实际观察
 - [ ] `.claude/settings.json`、`.codex/hooks.json` 已写
-- [ ] Codex 项目已 trust;`features.hooks` 未被关闭;`/hooks` 已批准
+- [ ] 若使用 Codex 项目级 Hook,已按客户端要求完成 trust 与必要批准;未为本技能改动全局 hooks 开关,其他 handler 已保留
 - [ ] 根级 `flow/规范/` 下 6 份详规齐
 - [ ] `flow/charter.md` 已开始填

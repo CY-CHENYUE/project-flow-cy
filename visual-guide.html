@@ -1235,7 +1235,7 @@
         <article class="benefit-card">
           <div class="benefit-icon"><div class="shield"></div></div>
           <h3>质量不漂</h3>
-          <p>先 plan 后 act，交付前换模型评审，收工前 hook 提醒自检。</p>
+          <p>先 plan 后 act，交付前换模型评审，最终回复前完成自检和交接。</p>
         </article>
         <article class="benefit-card">
           <div class="benefit-icon"><div class="handoff-icon"><span></span></div></div>
@@ -1349,26 +1349,26 @@
       <div class="section-head">
         <div>
           <p class="eyebrow">Stop hook</p>
-          <h2>Hook 像收工铃：提醒你别忘了写交接和沉淀。</h2>
+          <h2>先完成收工检查，再把结果直接交给你。</h2>
         </div>
-        <p>它不是神秘机制。你可以把它理解成会话结束前的一次“收工检查”。</p>
+        <p>Codex 在最终回复前主动自检；Claude Code 另有一次 Hook 提醒兜底。</p>
       </div>
       <div class="hook-grid">
         <article class="hook-panel">
-          <h3>它怎么响</h3>
+          <h3>两端如何收工</h3>
           <div class="hook-visual">
-            <div class="hook-step"><i>1</i><span>Agent 准备停止时，Stop hook 触发。</span></div>
-            <div class="hook-step"><i>2</i><span>Claude Code 与兼容的 Codex 返回一次收工提醒。</span></div>
-            <div class="hook-step"><i>3</i><span>同一用户回合再次停止时，脚本识别稳定 ID 并放行。</span></div>
+            <div class="hook-step"><i>1</i><span>Agent 在最终回复前完成专项检查、文档和交接。</span></div>
+            <div class="hook-step"><i>2</i><span>Codex 直接展示结果，Stop 静默放行。</span></div>
+            <div class="hook-step"><i>3</i><span>Claude Code 保留一次提醒，同一回合再次停止就放行。</span></div>
           </div>
         </article>
         <article class="hook-panel">
           <h3>怎么让它可用</h3>
-          <p>skill 本身要放到 Codex 扫描路径；项目接入后，Codex 项目级 hook 需要 trust 和 `/hooks` 批准。</p>
+          <p>skill 本身放到客户端扫描路径，收工约定写入项目入口。Codex 无需仅为本技能开启全局 hooks。</p>
           <code class="code-path">ln -s /Users/cychenyue/Documents/cc-skills/project-flow-cy ~/.agents/skills/project-flow-cy</code>
           <details>
             <summary>给懂工具的人看的细节</summary>
-            <p>Codex 当前 `features.hooks` 默认开启。项目级 `.codex/hooks.json` 只有在项目被 trust 后加载。Claude Code 使用 `prompt_id`，Codex 使用 `turn_id`；首次返回 `decision:block`，同一 scope 后续返回 `continue:true`。Codex 低于 `0.145.0` 或版本无法识别时安全放行。</p>
+            <p>Codex Stop 直接返回 `continue:true`，不检查版本或回合 ID，不追加收工续跑。Claude Code 按 `prompt_id` 首次返回 `decision:block`，同一回合后续放行。需要加载 Codex 项目 Hook 时遵循 trust 与批准要求，保留既有 command 和其他 handler。</p>
           </details>
         </article>
       </div>
@@ -1414,11 +1414,11 @@
         example: "产出: docs/specs/xxx.md；下一步: 对照方案实现 T02"
       },
       ".hooks/": {
-        tag: "收工铃",
-        title: "防止忘记自检",
-        text: "Stop hook 在会话收尾时提醒：本轮是否要更新文档、写进展、落决策、记踩坑。",
+        tag: "收工机制",
+        title: "最终回复前完成自检",
+        text: "先完成文档、进展、决策和问题记录。Codex Stop 静默放行，Claude Code 保留单次续跑兜底。",
         use: "初始化项目时复制脚本和两端配置。",
-        avoid: "不要擅自修改全局 config，只提醒用户 trust 和批准。",
+        avoid: "保留其他 handler，不改全局 config，不要求仅为本技能开启 Codex hooks。",
         example: ".hooks/stop-doccheck.sh · .claude/settings.json · .codex/hooks.json"
       }
     };

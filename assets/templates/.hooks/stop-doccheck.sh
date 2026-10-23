@@ -1,29 +1,11 @@
 #!/usr/bin/env bash
-# Stop hook —— Claude Code / Codex 每个用户回合收尾续跑一次自检。
+# Stop hook —— Codex 静默放行；Claude Code 每个用户回合续跑一次自检。
 # 用法: stop-doccheck.sh [claude|codex]
 tool="${1:-claude}"
-input="$(cat)"
 
 continue_safe() {
   printf '%s\n' '{"continue":true}'
   exit 0
-}
-
-codex_supports_continuation() {
-  local version rest major minor patch
-  version="$(codex --version 2>/dev/null | awk '{print $NF}')" || return 1
-  case "$version" in
-    *.*.*) ;;
-    *) return 1 ;;
-  esac
-  major="${version%%.*}"
-  rest="${version#*.}"
-  minor="${rest%%.*}"
-  patch="${rest#*.}"
-  case "${major}:${minor}:${patch}" in
-    *[!0-9:]* | :* | *: | *::* ) return 1 ;;
-  esac
-  [ "$major" -gt 0 ] || { [ "$major" -eq 0 ] && [ "$minor" -ge 145 ]; }
 }
 
 case "$tool" in
@@ -32,15 +14,15 @@ case "$tool" in
     scope_field="prompt_id"
     ;;
   codex)
-    docname="AGENTS.md"
-    scope_field="turn_id"
-    codex_supports_continuation || continue_safe
+    # 自检与交接在最终回复前完成；Stop 不追加会让答复折叠的续跑提示。
+    continue_safe
     ;;
   *)
     continue_safe
     ;;
 esac
 
+input="$(cat)"
 command -v jq >/dev/null 2>&1 || continue_safe
 sid="$(printf '%s' "$input" | jq -r '
   if type == "object" and (.session_id | type) == "string"
@@ -78,5 +60,5 @@ if ! mkdir "$marker" 2>/dev/null; then
   continue_safe
 fi
 
-reason="【收工自检】先读取当前路径生效的 ${docname}；若其中有业务专项收工检查，先执行该检查且不扩大本轮授权。① 文档:本轮若有 结构/方案、心智模型、方向、外部资料、设计 变更 → 提议更新对应层级的 ${docname} 或 DESIGN.md,列出修改点等确认。② 交接:在本 Hook 所属项目根的 flow/进展.md 最上面追加一条进展(做了什么/为什么/怎么理解/产出路径/问题→解决/下一步)并把这条贴在回复里给用户看,决策落 decisions.md、坑落 踩坑记录.md。都没有就回复「无需更新」。"
+reason="【收工自检】先读取当前路径生效的 ${docname}；若其中有业务专项收工检查，先执行该检查且不扩大本轮授权。① 文档:本轮若有 结构/方案、心智模型、方向、外部资料、设计 变更 → 提议更新对应层级的 ${docname} 或 DESIGN.md,列出修改点等确认。② 交接:在本 Hook 所属项目根的 flow/进展.md 最上面追加一条进展(做了什么/为什么/怎么理解/产出/问题与解决/下一步)，按 flow/规范/工作流程.md 的交接输出约定向用户展示同一组事实：默认单层 Markdown 列表、加粗字段名、前后留空行；用户明确格式优先,决策落 decisions.md、坑落 踩坑记录.md。都没有就回复「无需更新」。"
 jq -n --arg r "$reason" '{decision:"block", reason:$r}'

@@ -32,9 +32,12 @@ require_file "tests/test-codex-stop-hook-e2e.sh"
 
 require_text "SKILL.md" "一个项目边界一个控制面"
 require_text "SKILL.md" "assets/templates/MODULE_AGENTS.md"
-require_text "SKILL.md" '不低于 `0.145.0`'
+require_text "SKILL.md" "最终回复"
+require_text "SKILL.md" 'Stop 直接返回 `continue:true`'
 require_text "references/初始化SOP.md" "不在子项目重复创建"
-require_text "references/hook机制.md" 'Claude Code 只接受 `prompt_id`，Codex 只接受 `turn_id`'
+require_text "references/hook机制.md" '`prompt_id`'
+require_text "references/hook机制.md" '{"continue":true}'
+require_text "assets/templates/AGENTS.md" "最终回复"
 require_text "references/文档维护SOP.md" "规则就近,文档集中"
 require_text "README.md" "单仓多子项目"
 
